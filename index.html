@@ -25,7 +25,7 @@ body{margin:0;background:#ecece7;color:var(--ink);font-family:Georgia,serif}
 .btn{border:0;border-radius:11px;padding:13px 18px;font-family:Georgia,serif;cursor:pointer;font-size:14px}
 .primary{background:var(--green);color:#fff}
 .secondary{background:#eef0eb;color:var(--ink)}
-.actions{display:flex;justify-content:space-between;gap:10px;margin-top:22px}
+.actions{display:flex;justify-content:space-between;gap:10px;margin-top:22px}.utility-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.utility-actions .btn{font-size:12px;padding:10px 13px}.draft-box{background:#f7f7f2;border:1px solid #dedccf;border-radius:14px;padding:15px;margin:18px 0}.draft-box strong{color:var(--green)}.draft-box p{margin:5px 0 12px;font-size:12px;color:#666}.btn.danger{background:#f3e9e6;color:#7b5147}.btn.gold{background:#f4ead6;color:#765c28}
 .form{display:none}
 .form.on{display:block}
 .formhead{padding:22px 28px;background:var(--soft);border-bottom:1px solid var(--line)}
@@ -77,11 +77,20 @@ textarea{min-height:92px;resize:vertical}
         <div class="task"><span class="num">5</span><span>Memberikan pelayanan ekslusif pada keluarga pengantin dan tamu undangan</span></div>
       </div>
     </div>
-    <button class="btn primary" style="width:100%" onclick="startForm()">Mulai Mengisi Wedding Form →</button>
+    <div id="draftBox" class="draft-box" style="display:none">
+      <strong>Draft Wedding Form ditemukan</strong>
+      <p>Data yang sebelumnya diisi tersimpan di perangkat ini. Anda dapat melanjutkan dari tahap terakhir.</p>
+      <div class="utility-actions">
+        <button class="btn primary" onclick="resumeDraft()">Lanjutkan Draft →</button>
+        <button class="btn danger" onclick="deleteDraft()">Hapus Draft</button>
+      </div>
+    </div>
+    <button id="startBtn" class="btn primary" style="width:100%" onclick="startForm(false)">Mulai Mengisi Wedding Form →</button>
   </section>
 
   <section id="form" class="form">
-    <div class="formhead"><div class="brand">MAGICAL PROJECT</div><h2 id="formTitle">Data Calon Pengantin Wanita</h2></div>
+    <div class="formhead"><div class="brand">MAGICAL PROJECT</div><h2 id="formTitle">Data Calon Pengantin Wanita</h2>
+    <div class="utility-actions"><button class="btn gold" onclick="saveAndLater()">💾 Simpan &amp; Lanjut Nanti</button><button class="btn secondary" onclick="exportPDF()">📄 Export PDF</button><button class="btn danger" onclick="deleteDraft()">Hapus Draft</button></div></div>
     <div class="body">
       <div class="progress" id="progress"></div>
       <div id="content"></div>
@@ -157,10 +166,46 @@ const steps = [
 ]}
 ];
 const APPS_SCRIPT_URL="https://script.google.com/macros/s/AKfycbyJmtaVcsyedvQydoNyWnAKiEdjVlMSeHwu8LKNvWra-9RXbbPbU9pBTkhCTp5CK5UkfQ/exec";
-let current=0, data=JSON.parse(localStorage.getItem("magicalWeddingForm")||"{}");
+let current=parseInt(localStorage.getItem("magicalWeddingFormStep")||"0",10)||0;
+let data=JSON.parse(localStorage.getItem("magicalWeddingForm")||"{}");
 
-function save(){localStorage.setItem("magicalWeddingForm",JSON.stringify(data));}
-function startForm(){document.getElementById("welcome").style.display="none";document.getElementById("form").classList.add("on");render();window.scrollTo(0,0)}
+function hasDraft(){return Object.keys(data).some(k=>String(data[k]||"").trim()!=="");}
+function save(){localStorage.setItem("magicalWeddingForm",JSON.stringify(data));localStorage.setItem("magicalWeddingFormStep",String(current));}
+function startForm(resume){
+  if(!resume){current=0;data={};save();}
+  document.getElementById("welcome").style.display="none";
+  document.getElementById("form").classList.add("on");
+  render();window.scrollTo(0,0);
+}
+function resumeDraft(){startForm(true);}
+function saveAndLater(){
+  save();
+  document.getElementById("form").classList.remove("on");
+  document.getElementById("welcome").style.display="block";
+  updateDraftUI();
+  alert("Draft berhasil disimpan di perangkat ini. Anda dapat melanjutkannya nanti.");
+  window.scrollTo(0,0);
+}
+function deleteDraft(){
+  if(!hasDraft()){alert("Belum ada draft yang tersimpan.");return;}
+  if(!confirm("Hapus semua draft Wedding Form di perangkat ini? Data yang belum dikirim akan terhapus.")) return;
+  localStorage.removeItem("magicalWeddingForm");
+  localStorage.removeItem("magicalWeddingFormStep");
+  data={};current=0;
+  document.getElementById("form").classList.remove("on");
+  document.getElementById("welcome").style.display="block";
+  updateDraftUI();
+  window.scrollTo(0,0);
+}
+function updateDraftUI(){
+  const box=document.getElementById("draftBox");
+  const btn=document.getElementById("startBtn");
+  if(!box||!btn)return;
+  const exists=hasDraft();
+  box.style.display=exists?"block":"none";
+  btn.textContent=exists?"Mulai Form Baru":"Mulai Mengisi Wedding Form →";
+}
+
 function render(){
   document.getElementById("formTitle").textContent=steps[current]?.title||"Review Data";
   document.getElementById("progress").innerHTML=steps.map((s,i)=>`<i class="${i<=current?"on":""}"></i>`).join("");
@@ -176,8 +221,134 @@ function next(){current++;render();window.scrollTo(0,0)}
 function prev(){current--;render();window.scrollTo(0,0)}
 function renderReview(c){
   const sections=steps.map(s=>`<div class="section-title">${s.title}</div><div class="review">${s.fields.map(f=>`${f[1]}: ${data[f[0]]||"—"}`).join("\n")}</div>`).join("");
-  c.innerHTML=`<div class="step">Final Check</div><div class="title">Review Wedding Form</div><p class="help">Periksa semua data. Data tersimpan otomatis di browser klien.</p>${sections}<div class="actions"><button class="btn secondary" onclick="prev()">← Edit</button><button class="btn primary" onclick="finish()">Kirim Data & Cetak</button></div>`;
+  c.innerHTML=`<div class="step">Final Check</div><div class="title">Review Wedding Form</div><p class="help">Periksa semua data. Data tersimpan otomatis di browser klien. Anda dapat Export PDF kapan saja sebelum Submit Final.</p>${sections}<div class="actions"><button class="btn secondary" onclick="prev()">← Edit</button><button class="btn gold" onclick="exportPDF()">📄 Export PDF</button><button class="btn primary" onclick="finish()">Kirim Data Final</button></div>`;
 }
+function exportPDF(){
+  save();
+
+  // Generate a real PDF directly in the browser — no Print Preview.
+  // Uses a tiny built-in PDF writer so it also works from a local HTML file.
+  try{
+    const escPdf = v => String(v ?? "")
+      .replace(/\\/g,"\\\\")
+      .replace(/\(/g,"\\(")
+      .replace(/\)/g,"\\)")
+      .replace(/\r?\n/g," ")
+      .replace(/[^\x20-\x7E]/g,"-");
+
+    const wrapText = (text, maxChars=92) => {
+      text=String(text ?? "").replace(/\r/g,"");
+      const out=[];
+      text.split("\n").forEach(par=>{
+        if(!par){out.push("");return;}
+        let line="";
+        par.split(/\s+/).forEach(word=>{
+          if(!word)return;
+          if((line?line.length+1:0)+word.length<=maxChars){
+            line += (line?" ":"")+word;
+          }else{
+            if(line)out.push(line);
+            while(word.length>maxChars){out.push(word.slice(0,maxChars));word=word.slice(maxChars);}
+            line=word;
+          }
+        });
+        if(line)out.push(line);
+      });
+      return out;
+    };
+
+    const lines=[];
+    lines.push({text:"MAGICAL PROJECT",size:18,bold:true,spaceAfter:4});
+    lines.push({text:"WEDDING FORM — CLIENT DATA",size:12,bold:true,spaceAfter:14});
+    lines.push({text:"Generated from the Magical Project client portal",size:9,bold:false,spaceAfter:12});
+
+    steps.forEach((s,si)=>{
+      lines.push({text:s.title,size:12,bold:true,spaceBefore:8,spaceAfter:5});
+      s.fields.forEach(f=>{
+        const label=f[1];
+        const value=(data[f[0]]===undefined || data[f[0]]===null || String(data[f[0]]).trim()==="") ? "—" : String(data[f[0]]);
+        const chunks=wrapText(label+": "+value,92);
+        chunks.forEach((t,i)=>lines.push({text:t,size:9,bold:false,spaceAfter:i===chunks.length-1?2:0}));
+      });
+    });
+
+    // A4 in points.
+    const W=595.28,H=841.89;
+    const margin=42;
+    const usableH=H-(margin*2);
+    const pages=[];
+    let page=[];
+    let y=H-margin;
+
+    const addLine=(item)=>{
+      const fontSize=item.size||9;
+      const lineH=fontSize*1.35;
+      const before=item.spaceBefore||0;
+      const after=item.spaceAfter||0;
+      if(y-before-lineH<margin){pages.push(page);page=[];y=H-margin;}
+      y-=before;
+      page.push({text:item.text,size:fontSize,bold:!!item.bold,y});
+      y-=lineH+after;
+    };
+    lines.forEach(addLine);
+    if(page.length)pages.push(page);
+
+    const objects=[];
+    const addObj=body=>{objects.push(body);return objects.length;};
+    const fontRegular=addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
+    const fontBold=addObj('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>');
+    const pageIds=[];
+    const contentIds=[];
+
+    pages.forEach(pg=>{
+      let stream="q\n";
+      pg.forEach(item=>{
+        stream+=`BT /${item.bold?'F2':'F1'} ${item.size} Tf ${margin} ${item.y.toFixed(2)} Td (${escPdf(item.text)}) Tj ET\n`;
+      });
+      stream+="Q\n";
+      contentIds.push(addObj(`<< /Length ${stream.length} >>\nstream\n${stream}endstream`));
+      pageIds.push(addObj(""));
+    });
+
+    const pagesTreeId=addObj("");
+    const catalogId=addObj("");
+
+    pages.forEach((pg,i)=>{
+      objects[pageIds[i]-1]=`<< /Type /Page /Parent ${pagesTreeId} 0 R /MediaBox [0 0 ${W} ${H}] /Resources << /Font << /F1 ${fontRegular} 0 R /F2 ${fontBold} 0 R >> >> /Contents ${contentIds[i]} 0 R >>`;
+    });
+    objects[pagesTreeId-1]=`<< /Type /Pages /Kids [${pageIds.map(id=>id+' 0 R').join(' ')}] /Count ${pageIds.length} >>`;
+    objects[catalogId-1]=`<< /Type /Catalog /Pages ${pagesTreeId} 0 R >>`;
+
+    let pdf="%PDF-1.4\n%\xE2\xE3\xCF\xD3\n";
+    const offsets=[0];
+    objects.forEach((obj,i)=>{
+      offsets[i+1]=pdf.length;
+      pdf+=`${i+1} 0 obj\n${obj}\nendobj\n`;
+    });
+    const xref=pdf.length;
+    pdf+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n`;
+    for(let i=1;i<=objects.length;i++) pdf+=String(offsets[i]).padStart(10,"0")+" 00000 n \n";
+    pdf+=`trailer\n<< /Size ${objects.length+1} /Root ${catalogId} 0 R >>\nstartxref\n${xref}\n%%EOF`;
+
+    const blob=new Blob([pdf],{type:"application/pdf"});
+    const url=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    const cpw=(data.cpw_nama||"").trim().replace(/[^a-zA-Z0-9]+/g,"_");
+    const cpp=(data.cpp_nama||"").trim().replace(/[^a-zA-Z0-9]+/g,"_");
+    const base=["Magical_Project",cpw||"CPW",cpp||"CPP","Wedding_Form"].join("_");
+    a.href=url;
+    a.download=base+".pdf";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url),1500);
+    alert("PDF berhasil dibuat dan diunduh.");
+  }catch(err){
+    console.error(err);
+    alert("PDF belum berhasil dibuat. Silakan coba lagi.");
+  }
+}
+
 async function finish(){
   save();
   const btn=document.querySelector('.actions .primary');
@@ -190,14 +361,19 @@ async function finish(){
       body:JSON.stringify(data)
     });
     localStorage.removeItem('magicalWeddingForm');
+    localStorage.removeItem('magicalWeddingFormStep');
+    data={};current=0;
     alert('Terima kasih. Data Wedding Form berhasil dikirim ke Magical Project.');
-    window.print();
+    document.getElementById("form").classList.remove("on");
+    document.getElementById("welcome").style.display="block";
+    updateDraftUI();
   }catch(err){
     console.error(err);
     alert('Data belum dapat dikirim. Silakan periksa koneksi internet lalu coba lagi.');
-    if(btn){btn.disabled=false;btn.textContent='Kirim Data & Cetak';}
+    if(btn){btn.disabled=false;btn.textContent='Kirim Data Final';}
   }
 }
+updateDraftUI();
 </script>
 </body>
 </html>
